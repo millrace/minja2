@@ -1,0 +1,15 @@
+[workspace]
+name = "minja2"
+version = "0.1.0"
+description = "A Mojo implementation of the Jinja2 subset for chat templates"
+channels = ["conda-forge", "https://conda.modular.com/max"]
+platforms = ["osx-arm64"]
+
+[tasks]
+build = "mojo build src/main.mojo -o build/minja2"
+conformance = "python tests/test_conformance.py"
+
+[dependencies]
+max = "*"
+python = ">=3.11"
+jinja2 = "*"

@@ -1,0 +1,12 @@
+# Pixi environment (recreate with `pixi install`)
+.pixi/
+
+# Compiled minja2 binary
+/build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Personal, per-machine Claude Code overrides
+.claude/settings.local.json

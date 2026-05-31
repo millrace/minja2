@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pixi run:*)",
+      "Bash(pixi install:*)",
+      "Bash(pixi:*)",
+      "Bash(./build/minja2:*)",
+      "Read"
+    ]
+  }
+}
