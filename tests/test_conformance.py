@@ -1,15 +1,31 @@
 """Byte-equality conformance: minja2 (Mojo) vs the reference jinja2 engine.
 
-For every (template, context) pair we render twice — once through
-`jinja2.Environment(undefined=StrictUndefined)` with the three globals
-`transformers` injects (`raise_exception`, `strftime_now`, `namespace`), and
-once through the compiled `minja2` CLI — and assert the bytes match. When the
-reference renders, minja2 must produce identical bytes; when the reference
-aborts via `raise_exception`, minja2 must surface the same message (exit 3).
+The reference here mirrors `transformers.apply_chat_template`'s real jinja2
+configuration — that is minja2's stated target (requirements §1), not vanilla
+jinja2. Two settings matter and both diverge from a default `Environment`:
 
-Contexts that the reference rejects for structural reasons (e.g. a template
-reading a key a given context never supplies, raising `UndefinedError`) are not
-meaningful comparisons and are reported as SKIP, not failures.
+  * `tojson` preserves **insertion order** (`sort_keys=False`). transformers
+    installs its own `tojson` filter with `sort_keys=False`; jinja2's default
+    policy is `sort_keys=True`. Tool definitions are rendered byte-exact only
+    with insertion order.
+  * Undefined is **chainable + falsy** (lenient boolean context) but still
+    **raises on emission**. This matches minja2's hybrid: `not message.tool_calls`
+    on a plain assistant turn is `True` (undefined is falsy), while actually
+    printing an undefined value aborts. transformers uses jinja2's default
+    `Undefined` (lenient everywhere); minja2 keeps StrictUndefined's
+    raise-on-emit, so we mirror exactly that with a `ChainableUndefined`
+    subclass whose `__str__` fails.
+
+For every (template, context) pair we render twice — once through this
+reference env with the three globals `transformers` injects (`raise_exception`,
+`strftime_now`, `namespace`), once through the compiled `minja2` CLI — and
+assert the bytes match. When the reference renders, minja2 must produce
+identical bytes; when the reference aborts via `raise_exception`, minja2 must
+surface the same message (exit 3).
+
+Contexts the reference rejects for structural reasons (e.g. printing an
+undefined value, raising `UndefinedError`) are not meaningful comparisons and
+are reported as SKIP, not failures.
 
 Run:  pixi run python tests/test_conformance.py
 """
@@ -24,7 +40,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from jinja2 import Environment, StrictUndefined
+from jinja2 import ChainableUndefined, Environment
 from jinja2.utils import Namespace
 
 import fetch_reference_templates as fx  # sibling loader API
@@ -41,8 +57,24 @@ class RaiseExc(Exception):
     pass
 
 
+class ChatTemplateUndefined(ChainableUndefined):
+    """minja2's hybrid undefined: chainable attribute/item access and falsy in
+    boolean context (so `not message.tool_calls` works on a plain turn), but
+    printing it aborts — matching minja2's `to_output()` raise on VUNDEF."""
+
+    __slots__ = ()
+
+    def __str__(self):
+        self._fail_with_undefined_error()
+
+    __html__ = __str__
+
+
 def make_env() -> Environment:
-    env = Environment(undefined=StrictUndefined)
+    env = Environment(undefined=ChatTemplateUndefined)
+    # transformers installs tojson with sort_keys=False; jinja2's default policy
+    # is sort_keys=True. Insertion order is what makes tool defs byte-exact.
+    env.policies["json.dumps_kwargs"] = {"sort_keys": False}
     env.globals["raise_exception"] = _raise_exception
     env.globals["strftime_now"] = _strftime_now
     env.globals["namespace"] = Namespace
